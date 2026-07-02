@@ -1,0 +1,1295 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>DHRUV OS — Creative Engineer</title>
+<style>
+  :root{
+    --amber:#f4a259;
+    --cyan:#6ee7d8;
+    --ink:#0b0c10;
+  }
+  *{ box-sizing:border-box; }
+  html,body{
+    margin:0; padding:0; background:#050506; color:#e8e6df;
+    font-family: ui-monospace, "SF Mono", "Cascadia Code", Menlo, Consolas, monospace;
+    overscroll-behavior:none;
+  }
+  #webgl{
+    position:fixed; inset:0; width:100vw; height:100vh; display:block; z-index:1;
+  }
+  #scroll-spacer{ height:750vh; width:100%; position:relative; z-index:0; }
+
+  #hud{
+    position:fixed; left:24px; bottom:24px; z-index:5;
+    font-size:11px; letter-spacing:.12em; text-transform:uppercase;
+    color:rgba(255,255,255,.85); pointer-events:none;
+    text-shadow: 0 1px 4px rgba(0,0,0,.85), 0 0 12px rgba(0,0,0,.5);
+    display:flex; flex-direction:column; gap:6px;
+    transition:opacity .6s ease;
+  }
+  #hud .beat{ color:var(--cyan); font-size:12px; font-weight:600; }
+  #hud .bar{ width:140px; height:2px; background:rgba(255,255,255,.18); position:relative; overflow:hidden; }
+  #hud .bar i{ position:absolute; left:0; top:0; bottom:0; width:0%; background:var(--cyan); }
+
+  #intro-hint{
+    position:fixed; left:50%; bottom:36px; transform:translateX(-50%);
+    z-index:5; font-size:11px; letter-spacing:.2em; text-transform:uppercase;
+    color:rgba(255,255,255,.9); pointer-events:none; text-align:center;
+    text-shadow: 0 1px 4px rgba(0,0,0,.85), 0 0 12px rgba(0,0,0,.5);
+    animation: pulse 2.6s ease-in-out infinite;
+  }
+  #intro-hint span{ display:block; margin-top:8px; font-size:16px; }
+  @keyframes pulse{ 0%,100%{opacity:.35} 50%{opacity:.9} }
+
+  #veil{
+    position:fixed; inset:0; z-index:10; background:#000; pointer-events:none;
+    opacity:1; transition:opacity 1.6s ease;
+  }
+
+  #corner-label{
+    position:fixed; right:24px; top:24px; z-index:5;
+    font-size:10px; letter-spacing:.15em; color:rgba(255,255,255,.65);
+    text-transform:uppercase; text-align:right; line-height:1.6;
+    text-shadow: 0 1px 4px rgba(0,0,0,.85), 0 0 12px rgba(0,0,0,.5);
+  }
+  #corner-label b{ color:rgba(255,255,255,.92); font-weight:600; }
+
+  @media (prefers-reduced-motion: reduce){
+    #intro-hint{ animation:none; }
+  }
+</style>
+</head>
+<body>
+
+<div id="veil"></div>
+<canvas id="webgl"></canvas>
+
+<div id="hud">
+  <div class="beat" id="beat-label">SYSTEM_BOOT</div>
+  <div class="bar"><i id="beat-bar"></i></div>
+</div>
+
+<div id="corner-label">
+  DHRUV RAJPUT<br/>
+  <b>Creative Engineer</b> — AI &amp; ML / UI·UX / Blender / Game Dev
+</div>
+
+<div id="intro-hint" id="intro-hint">
+  scroll to enter
+  <span>↓</span>
+</div>
+
+<div id="scroll-spacer"></div>
+
+<script type="importmap">
+{
+  "imports": {
+    "three": "https://cdn.jsdelivr.net/npm/three@0.164.0/build/three.module.js",
+    "three/addons/": "https://cdn.jsdelivr.net/npm/three@0.164.0/examples/jsm/"
+  }
+}
+</script>
+
+<script type="module">
+import * as THREE from "three";
+import { EffectComposer } from "three/addons/postprocessing/EffectComposer.js";
+import { RenderPass } from "three/addons/postprocessing/RenderPass.js";
+import { UnrealBloomPass } from "three/addons/postprocessing/UnrealBloomPass.js";
+import { OutputPass } from "three/addons/postprocessing/OutputPass.js";
+
+/* ------------------------------------------------------------------ */
+/*  DHRUV OS — single-file procedural build of the room experience.   */
+/*  No external models/textures: everything is generated at runtime  */
+/*  so this file runs standalone. (Production version should swap in */
+/*  baked Blender assets per the asset list / perf strategy.)        */
+/* ------------------------------------------------------------------ */
+
+const reducedMotion = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+
+/* ---------- renderer / scene / camera ---------- */
+const canvas = document.getElementById("webgl");
+const renderer = new THREE.WebGLRenderer({ canvas, antialias:true, powerPreference:"high-performance" });
+renderer.setPixelRatio(Math.min(window.devicePixelRatio, reducedMotion ? 1 : 1.75));
+renderer.setSize(window.innerWidth, window.innerHeight);
+renderer.outputColorSpace = THREE.SRGBColorSpace;
+renderer.toneMapping = THREE.ACESFilmicToneMapping;
+renderer.toneMappingExposure = 1.2;
+renderer.shadowMap.enabled = true;
+renderer.shadowMap.type = THREE.PCFSoftShadowMap;
+
+const scene = new THREE.Scene();
+scene.fog = new THREE.FogExp2(0x141110, 0.045);
+
+const camera = new THREE.PerspectiveCamera(42, window.innerWidth/window.innerHeight, 0.05, 60);
+camera.position.set(0, 1.5, 7);
+
+/* ---------- postprocessing ---------- */
+const composer = new EffectComposer(renderer);
+composer.addPass(new RenderPass(scene, camera));
+const bloom = new UnrealBloomPass(new THREE.Vector2(window.innerWidth, window.innerHeight), reducedMotion ? 0.12 : 0.18, 0.28, 0.55);
+composer.addPass(bloom);
+composer.addPass(new OutputPass());
+
+/* ---------- helpers ---------- */
+function makeCanvas(w,h){
+  const c = document.createElement("canvas");
+  c.width = w; c.height = h;
+  return c;
+}
+function texFromCanvas(c){
+  const t = new THREE.CanvasTexture(c);
+  t.colorSpace = THREE.SRGBColorSpace;
+  t.needsUpdate = true;
+  return t;
+}
+function smooth01(t,a,b){ return THREE.MathUtils.smoothstep(t,a,b); }
+// trapezoid: fades in [a,b], full [b,c], fades out [c,d]
+function trapezoid(t,a,b,c,d){
+  return smooth01(t,a,b) * (1 - smooth01(t,c,d));
+}
+
+/* ==================================================================
+   ROOM GEOMETRY
+   ================================================================== */
+const room = new THREE.Group();
+scene.add(room);
+
+// materials
+const matFloor  = new THREE.MeshStandardMaterial({ color:0x14110f, roughness:0.9, metalness:0.05 });
+const matWall   = new THREE.MeshStandardMaterial({ color:0x0e0d10, roughness:1.0 });
+const matDesk   = new THREE.MeshStandardMaterial({ color:0xe9e4d8, roughness:0.55, metalness:0.02 });
+const matDeskLeg= new THREE.MeshStandardMaterial({ color:0x2a2a2c, roughness:0.6, metalness:0.3 });
+const matPlastic= new THREE.MeshStandardMaterial({ color:0x1c1c1e, roughness:0.45, metalness:0.15 });
+const matCeramic= new THREE.MeshStandardMaterial({ color:0xd8dde0, roughness:0.25, metalness:0.05 });
+const matWood   = new THREE.MeshStandardMaterial({ color:0x3b2a20, roughness:0.7 });
+const matLeaf   = new THREE.MeshStandardMaterial({ color:0x3a6b4a, roughness:0.8, flatShading:true });
+const matPot    = new THREE.MeshStandardMaterial({ color:0xb85c38, roughness:0.9 });
+
+// floor
+const floor = new THREE.Mesh(new THREE.PlaneGeometry(9,7), matFloor);
+floor.rotation.x = -Math.PI/2;
+floor.receiveShadow = true;
+room.add(floor);
+
+// back wall
+const backWall = new THREE.Mesh(new THREE.PlaneGeometry(9,4.4), matWall);
+backWall.position.set(0, 2.2, -2.1);
+backWall.receiveShadow = true;
+room.add(backWall);
+
+// left wall (skills / bookshelf side)
+const leftWall = new THREE.Mesh(new THREE.PlaneGeometry(4.4,4.4), matWall);
+leftWall.rotation.y = Math.PI/2;
+leftWall.position.set(-3.2, 2.2, 0);
+leftWall.receiveShadow = true;
+room.add(leftWall);
+
+// faint window on right wall (soft bokeh, out of focus)
+const windowGlow = new THREE.Mesh(
+  new THREE.PlaneGeometry(1.6, 2.1),
+  new THREE.MeshBasicMaterial({ color:0x223347, transparent:true, opacity:0.35 })
+);
+windowGlow.rotation.y = -Math.PI/2;
+windowGlow.position.set(3.2, 2.0, -0.6);
+room.add(windowGlow);
+const bokehGeo = new THREE.SphereGeometry(0.035,8,8);
+for(let i=0;i<10;i++){
+  const b = new THREE.Mesh(bokehGeo, new THREE.MeshBasicMaterial({ color: i%2? 0xffd9a0:0x9fd8ff, transparent:true, opacity:0.5 }));
+  b.position.set(3.18, 1.2 + Math.random()*1.6, -1.3 + Math.random()*1.4);
+  room.add(b);
+}
+
+// cool moonlight spilling in through the window — the room's second light source,
+// balancing the lamp's warmth with a quiet blue edge on the far side of the desk
+const moonLight = new THREE.DirectionalLight(0x9fc4ff, 0.18);
+moonLight.position.set(3.4, 2.6, 0.4);
+moonLight.target.position.set(0.6, 0.8, -1.0);
+moonLight.castShadow = false;
+room.add(moonLight, moonLight.target);
+const moonFill = new THREE.PointLight(0x6f8fc9, 0.06, 3.5, 2);
+moonFill.position.set(2.6, 1.6, -0.4);
+room.add(moonFill);
+
+/* ---- desk ---- */
+const desk = new THREE.Group();
+const deskTop = new THREE.Mesh(new THREE.BoxGeometry(3.2, 0.06, 1.1), matDesk);
+deskTop.position.set(0, 0.78, -1.05);
+deskTop.castShadow = true; deskTop.receiveShadow = true;
+desk.add(deskTop);
+const legGeo = new THREE.BoxGeometry(0.05, 0.78, 0.05);
+[[-1.5,-1.55],[1.5,-1.55],[-1.5,-0.6],[1.5,-0.6]].forEach(([x,z])=>{
+  const leg = new THREE.Mesh(legGeo, matDeskLeg);
+  leg.position.set(x, 0.39, z);
+  leg.castShadow = true;
+  desk.add(leg);
+});
+room.add(desk);
+
+/* ---- monitor ---- */
+const monitorGroup = new THREE.Group();
+monitorGroup.position.set(0, 0.81, -1.35);
+const monitorStand = new THREE.Mesh(new THREE.CylinderGeometry(0.05,0.09,0.18,16), matPlastic);
+monitorStand.position.y = 0.09;
+monitorGroup.add(monitorStand);
+const monitorNeck = new THREE.Mesh(new THREE.BoxGeometry(0.06,0.28,0.06), matPlastic);
+monitorNeck.position.y = 0.3;
+monitorGroup.add(monitorNeck);
+const bezel = new THREE.Mesh(new THREE.BoxGeometry(1.5,0.86,0.04), matPlastic);
+bezel.position.y = 0.86;
+bezel.castShadow = true;
+monitorGroup.add(bezel);
+
+const screenCanvas = makeCanvas(1024,576);
+const screenCtx = screenCanvas.getContext("2d");
+const screenTex = texFromCanvas(screenCanvas);
+const screenMat = new THREE.MeshBasicMaterial({ map: screenTex, toneMapped:false });
+const screenMesh = new THREE.Mesh(new THREE.PlaneGeometry(1.4,0.79), screenMat);
+/* clickable contact rows on the "Connection.app" screen — filled in each time it's drawn */
+const contactHitRects = [];
+let hoveredContactRow = null;
+screenMesh.position.set(0, 0.86, 0.023);
+monitorGroup.add(screenMesh);
+const screenLight = new THREE.PointLight(0x6ee7d8, 0, 2.6, 2);
+screenLight.position.set(0, 0.9, 0.4);
+monitorGroup.add(screenLight);
+// steady key light on the monitor bezel itself — without this the frame reads as a black silhouette
+const monitorKeyLight = new THREE.SpotLight(0xe6e2d6, 1.0, 3.0, Math.PI/4.5, 0.55, 1.4);
+monitorKeyLight.position.set(0.5, 1.7, -0.2);
+const monitorKeyTarget = new THREE.Object3D();
+monitorKeyTarget.position.set(0, 0.86, -1.35);
+room.add(monitorKeyLight, monitorKeyTarget);
+monitorKeyLight.target = monitorKeyTarget;
+room.add(monitorGroup);
+
+/* ---- keyboard + white backlight ---- */
+const keyboard = new THREE.Mesh(new THREE.BoxGeometry(0.62,0.03,0.22), matPlastic);
+keyboard.position.set(-0.15, 0.815, -0.75);
+keyboard.castShadow = true;
+room.add(keyboard);
+// soft white backlight along the keyboard's front edge — a material glow only, no point light,
+// which is what was producing the odd bright "dot" reflection on the desk before
+const rgbStrip = new THREE.Mesh(
+  new THREE.PlaneGeometry(0.58,0.016),
+  new THREE.MeshBasicMaterial({ color:0xf3f1ea, transparent:true, opacity:0.5, toneMapped:false })
+);
+rgbStrip.rotation.x = -Math.PI/2;
+rgbStrip.position.set(-0.15, 0.8305, -0.845);
+room.add(rgbStrip);
+
+/* ---- headphones, resting on the monitor's top edge ---- */
+const headphonesGroup = new THREE.Group();
+const hpBand = new THREE.Mesh(new THREE.TorusGeometry(0.13,0.008,8,24,Math.PI), matPlastic);
+hpBand.rotation.z = Math.PI;
+hpBand.position.set(0, 1.29, 0.02);
+headphonesGroup.add(hpBand);
+[-0.13,0.13].forEach(x=>{
+  const cup = new THREE.Mesh(new THREE.CylinderGeometry(0.045,0.045,0.03,16), matPlastic);
+  cup.rotation.z = Math.PI/2;
+  cup.position.set(x, 1.18, 0.02);
+  headphonesGroup.add(cup);
+});
+monitorGroup.add(headphonesGroup);
+
+/* ---- USB cable, keyboard to a small dev SSD ---- */
+const ssdBox = new THREE.Mesh(new THREE.BoxGeometry(0.09,0.018,0.06), new THREE.MeshStandardMaterial({ color:0x2a2a2e, roughness:0.4, metalness:0.4 }));
+ssdBox.position.set(0.42, 0.79, -0.9);
+ssdBox.castShadow = true;
+room.add(ssdBox);
+const cableCurve = new THREE.CatmullRomCurve3([
+  new THREE.Vector3(-0.02, 0.83, -0.78),
+  new THREE.Vector3(0.15, 0.80, -0.83),
+  new THREE.Vector3(0.30, 0.795,-0.87),
+  new THREE.Vector3(0.40, 0.80, -0.90),
+]);
+const cableTube = new THREE.Mesh(new THREE.TubeGeometry(cableCurve, 20, 0.004, 6, false), new THREE.MeshStandardMaterial({ color:0x1a1a1c, roughness:0.6 }));
+room.add(cableTube);
+
+/* ---- small dev board (Pi/Arduino-style), lives behind the keyboard ---- */
+const devBoard = new THREE.Mesh(new THREE.BoxGeometry(0.11,0.008,0.08), new THREE.MeshStandardMaterial({ color:0x1f5c3a, roughness:0.6 }));
+devBoard.position.set(-0.45, 0.795, -1.02);
+devBoard.rotation.y = -0.1;
+devBoard.castShadow = true;
+room.add(devBoard);
+const devChip = new THREE.Mesh(new THREE.BoxGeometry(0.02,0.01,0.02), new THREE.MeshStandardMaterial({ color:0x0c0c0c, roughness:0.4 }));
+devChip.position.set(-0.45, 0.803, -1.0);
+room.add(devChip);
+
+/* ---- sticky notes beside the notebook ---- */
+const stickyColors = [0xf4a259, 0x8b7fd6, 0x6ee7d8];
+stickyColors.forEach((c,i)=>{
+  const note = new THREE.Mesh(new THREE.PlaneGeometry(0.06,0.06), new THREE.MeshStandardMaterial({ color:c, roughness:0.9, side:THREE.DoubleSide }));
+  note.rotation.x = -Math.PI/2;
+  note.rotation.z = (Math.random()-0.5)*0.5;
+  note.position.set(-0.62 + i*0.05, 0.812, -1.28 + (i%2)*0.02);
+  note.receiveShadow = true;
+  room.add(note);
+});
+
+/* ---- a small printed UI sketch, pinned near the boot-log wall ---- */
+const sketchCanvas = makeCanvas(256,320);
+(function drawSketch(){
+  const c = sketchCanvas.getContext("2d");
+  c.fillStyle = "#e9e4d8"; c.fillRect(0,0,256,320);
+  c.strokeStyle = "rgba(20,20,20,0.55)"; c.lineWidth = 2;
+  c.strokeRect(20,24,216,60);
+  for(let i=0;i<3;i++){ c.strokeRect(20, 100+i*46, 216, 34); }
+  c.beginPath(); c.moveTo(20,270); c.lineTo(236,270); c.stroke();
+  c.font = "12px ui-monospace, monospace"; c.fillStyle = "rgba(20,20,20,0.5)";
+  c.fillText("metroflow — route card v3", 20, 300);
+})();
+const sketchPanel = new THREE.Mesh(
+  new THREE.PlaneGeometry(0.34,0.42),
+  new THREE.MeshStandardMaterial({ map: texFromCanvas(sketchCanvas), roughness:0.95 })
+);
+sketchPanel.position.set(0.85, 2.05, -2.075);
+sketchPanel.rotation.z = 0.04;
+room.add(sketchPanel);
+for(let i=0;i<2;i++){
+  const pin = new THREE.Mesh(new THREE.SphereGeometry(0.008,8,8), new THREE.MeshStandardMaterial({ color:0xd6624f, roughness:0.3, metalness:0.5 }));
+  pin.position.set(0.85 + (i? 0.13:-0.13), 2.24, -2.07);
+  room.add(pin);
+}
+
+/* ---- mouse ---- */
+const mouse3d = new THREE.Mesh(new THREE.CapsuleGeometry(0.035,0.06,4,8), matPlastic);
+mouse3d.rotation.z = Math.PI/2;
+mouse3d.position.set(0.42, 0.81, -0.7);
+mouse3d.castShadow = true;
+room.add(mouse3d);
+// soft white backlight glow under the mouse, matching the keyboard's white RGB
+const mouseGlow = new THREE.Mesh(
+  new THREE.RingGeometry(0.032,0.046,28),
+  new THREE.MeshBasicMaterial({ color:0xf3f1ea, transparent:true, opacity:0.45, toneMapped:false, side:THREE.DoubleSide })
+);
+mouseGlow.rotation.x = -Math.PI/2;
+mouseGlow.position.set(0.42, 0.796, -0.7);
+room.add(mouseGlow);
+
+/* ---- mug + steam ---- */
+const mug = new THREE.Mesh(new THREE.CylinderGeometry(0.05,0.045,0.08,20), matCeramic);
+mug.position.set(0.65, 0.82, -1.15);
+mug.castShadow = true;
+room.add(mug);
+const mugHandle = new THREE.Mesh(new THREE.TorusGeometry(0.028,0.008,8,16,Math.PI*1.4), matCeramic);
+mugHandle.position.set(0.705, 0.82, -1.15);
+mugHandle.rotation.y = Math.PI/2;
+room.add(mugHandle);
+const steamGeo = new THREE.BufferGeometry();
+const steamCount = reducedMotion? 0 : 24;
+const steamPos = new Float32Array(steamCount*3);
+for(let i=0;i<steamCount;i++){
+  steamPos[i*3]   = 0.65 + (Math.random()-0.5)*0.03;
+  steamPos[i*3+1] = 0.86 + Math.random()*0.25;
+  steamPos[i*3+2] = -1.15 + (Math.random()-0.5)*0.03;
+}
+steamGeo.setAttribute("position", new THREE.BufferAttribute(steamPos,3));
+const steam = new THREE.Points(steamGeo, new THREE.PointsMaterial({ color:0xffffff, size:0.02, transparent:true, opacity:0.18, depthWrite:false }));
+room.add(steam);
+
+/* ---- notebook + pen ---- */
+const notebook = new THREE.Mesh(new THREE.BoxGeometry(0.32,0.02,0.24), new THREE.MeshStandardMaterial({ color:0xdedad0, roughness:0.9 }));
+notebook.position.set(-0.85, 0.805, -1.15);
+notebook.rotation.y = 0.15;
+notebook.castShadow = true;
+room.add(notebook);
+const pen = new THREE.Mesh(new THREE.CylinderGeometry(0.006,0.006,0.16,8), new THREE.MeshStandardMaterial({ color:0xf4a259, roughness:0.4 }));
+pen.rotation.z = Math.PI/2.3;
+pen.position.set(-0.78, 0.82, -1.08);
+room.add(pen);
+
+/* ---- desk lamp ---- */
+const lampGroup = new THREE.Group();
+lampGroup.position.set(1.35, 0.81, -1.2);
+const lampBase = new THREE.Mesh(new THREE.CylinderGeometry(0.08,0.09,0.02,20), matPlastic);
+lampGroup.add(lampBase);
+const lampArm = new THREE.Mesh(new THREE.CylinderGeometry(0.012,0.012,0.4,10), matPlastic);
+lampArm.position.set(-0.05,0.2,0);
+lampArm.rotation.z = 0.5;
+lampGroup.add(lampArm);
+const lampHead = new THREE.Mesh(new THREE.ConeGeometry(0.09,0.14,20,1,true), matPlastic);
+lampHead.rotation.x = Math.PI*0.62;
+lampHead.position.set(-0.24,0.4,0);
+lampGroup.add(lampHead);
+const lampBulb = new THREE.Mesh(new THREE.SphereGeometry(0.03,12,12), new THREE.MeshBasicMaterial({ color:0xf4a259, toneMapped:false }));
+lampBulb.position.set(-0.27,0.36,0);
+lampGroup.add(lampBulb);
+room.add(lampGroup);
+const lampLight = new THREE.SpotLight(0xf4a259, 0, 3.4, Math.PI/3.4, 0.6, 1.3);
+lampLight.position.set(1.08, 1.15, -1.2);
+lampLight.target.position.set(0, 0.8, -1.0);
+lampLight.castShadow = true;
+room.add(lampLight, lampLight.target);
+
+/* ---- plant ---- */
+const plant = new THREE.Group();
+const pot = new THREE.Mesh(new THREE.CylinderGeometry(0.09,0.07,0.14,16), matPot);
+pot.position.y = 0.85; plant.add(pot);
+for(let i=0;i<6;i++){
+  const leaf = new THREE.Mesh(new THREE.IcosahedronGeometry(0.06,0), matLeaf);
+  const a = (i/6)*Math.PI*2;
+  leaf.position.set(Math.cos(a)*0.05, 0.98+Math.random()*0.08, Math.sin(a)*0.05 -1.55);
+  leaf.scale.set(1,1.4,1);
+  plant.add(leaf);
+}
+plant.children.forEach(c=>{ if(c!==pot){ c.position.z += 1.55; } });
+plant.position.set(-1.25, 0, -1.25);
+room.add(plant);
+
+/* ==================================================================
+   WALL — Boot Log (timeline)
+   ================================================================== */
+const bootLogCanvas = makeCanvas(1024, 700);
+const bootLogCtx = bootLogCanvas.getContext("2d");
+const bootLogTex = texFromCanvas(bootLogCanvas);
+function drawBootLog(){
+  const ctx = bootLogCtx;
+  ctx.clearRect(0,0,1024,700);
+  ctx.fillStyle = "#0c0d10"; ctx.fillRect(0,0,1024,700);
+  ctx.strokeStyle = "rgba(244,162,89,0.15)"; ctx.lineWidth=2; ctx.strokeRect(20,20,984,660);
+  ctx.font = "600 30px ui-monospace, monospace";
+  ctx.fillStyle = "#f4a259";
+  ctx.fillText("BOOT_LOG.sys", 50, 90);
+  ctx.font = "18px ui-monospace, monospace";
+  const lines = [
+    ["2022", "enrolled — Computer Engineering (AI & ML)"],
+    ["2023", "first production UI shipped — learned to care about the 2px"],
+    ["2024", "MetroFlow — realtime flow visualization tool, built solo"],
+    ["2025", "went deep on Blender + 3D pipelines for the web"],
+    ["2026", "compiling DHRUV_OS — this room"],
+  ];
+  let y = 170;
+  lines.forEach(([year,text])=>{
+    ctx.fillStyle = "#6ee7d8";
+    ctx.fillText(year, 60, y);
+    ctx.fillStyle = "rgba(232,230,223,0.85)";
+    ctx.fillText(text, 190, y);
+    y += 78;
+  });
+  ctx.fillStyle = "rgba(232,230,223,0.35)";
+  ctx.font = "16px ui-monospace, monospace";
+  ctx.fillText("> tail -f dhruv_rajput.log", 60, 640);
+  bootLogTex.needsUpdate = true;
+}
+drawBootLog();
+const bootLogPanel = new THREE.Mesh(
+  new THREE.PlaneGeometry(2.0, 1.37),
+  new THREE.MeshBasicMaterial({ map: bootLogTex, transparent:true, opacity:0, toneMapped:false })
+);
+bootLogPanel.position.set(-0.5, 2.15, -2.08);
+room.add(bootLogPanel);
+const bootLogLight = new THREE.SpotLight(0xf4a259, 0, 3.2, Math.PI/4, 0.5, 1.5);
+bootLogLight.position.set(-0.5, 3.1, -0.6);
+bootLogLight.target.position.set(-0.5, 2.15, -2.1);
+room.add(bootLogLight, bootLogLight.target);
+
+/* ==================================================================
+   LEFT WALL — Skills bookshelf
+   ================================================================== */
+const shelfGroup = new THREE.Group();
+shelfGroup.position.set(-3.05, 0, -0.7);
+const shelfBoard = new THREE.Mesh(new THREE.BoxGeometry(0.02,0.9,1.5), matWood);
+shelfBoard.position.set(0,1.15,0);
+shelfGroup.add(shelfBoard);
+const shelfBase = new THREE.Mesh(new THREE.BoxGeometry(0.16,0.02,1.5), matWood);
+shelfBase.position.set(0.08,0.75,0);
+shelfGroup.add(shelfBase);
+
+const skills = ["React","Three.js","AI / ML","UI · UX","Blender","Game Dev","WEB DEV"];
+const bookColors = [0xb85c38,0xf4a259,0x6ee7d8,0x8b7fd6,0x5a8f6a,0xd6624f,0x3b6f8f];
+function makeSpineTexture(label, color){
+  const c = makeCanvas(64,320);
+  const ctx = c.getContext("2d");
+  ctx.fillStyle = "#" + color.toString(16).padStart(6,"0");
+  ctx.fillRect(0,0,64,320);
+  ctx.save();
+  ctx.translate(40,300);
+  ctx.rotate(-Math.PI/2);
+  ctx.font = "600 22px ui-monospace, monospace";
+  ctx.fillStyle = "rgba(15,15,15,0.85)";
+  ctx.fillText(label, 0, 0);
+  ctx.restore();
+  return texFromCanvas(c);
+}
+const bookMeshes = [];
+skills.forEach((label,i)=>{
+  const color = bookColors[i % bookColors.length];
+  const h = 0.34 + (i%3)*0.03;
+  const geo = new THREE.BoxGeometry(0.16, h, 0.045);
+  const spineTex = makeSpineTexture(label, color);
+  const mats = [
+    new THREE.MeshStandardMaterial({ color, roughness:0.7, emissive:0x000000 }), // +x (spine, facing into room)
+    new THREE.MeshStandardMaterial({ color:0xe8e6df, roughness:0.9 }), // -x
+    new THREE.MeshStandardMaterial({ color, roughness:0.8 }), // +y
+    new THREE.MeshStandardMaterial({ color, roughness:0.8 }), // -y
+    new THREE.MeshStandardMaterial({ map: spineTex, roughness:0.7, emissive:0xffffff, emissiveIntensity:0 }), // +z (label face)
+    new THREE.MeshStandardMaterial({ color, roughness:0.8 }), // -z
+  ];
+  const book = new THREE.Mesh(geo, mats);
+  book.rotation.y = Math.PI/2;
+  book.position.set(0.02, 1.16 + h/2 - 0.05, -0.55 + i*0.19);
+  book.userData.baseX = book.position.x;
+  book.userData.label = label;
+  book.castShadow = true;
+  shelfGroup.add(book);
+  bookMeshes.push(book);
+});
+// a controller, resting on the shelf between reading sessions
+const controllerBody = new THREE.Mesh(new THREE.BoxGeometry(0.14,0.035,0.09), new THREE.MeshStandardMaterial({ color:0x232326, roughness:0.5 }));
+controllerBody.position.set(0.06, 0.79, -0.05);
+controllerBody.castShadow = true;
+shelfGroup.add(controllerBody);
+[-0.045,0.045].forEach(dz=>{
+  const stick = new THREE.Mesh(new THREE.CylinderGeometry(0.014,0.014,0.012,12), new THREE.MeshStandardMaterial({ color:0x3a3a3e, roughness:0.4 }));
+  stick.position.set(0.02, 0.81, -0.05+dz);
+  shelfGroup.add(stick);
+});
+// a small GPU box, boxed, tucked at the end of the shelf
+const gpuBox = new THREE.Mesh(new THREE.BoxGeometry(0.16,0.11,0.09), new THREE.MeshStandardMaterial({ color:0x14151a, roughness:0.6 }));
+gpuBox.position.set(0.03, 0.855, -0.62);
+gpuBox.castShadow = true;
+shelfGroup.add(gpuBox);
+
+room.add(shelfGroup);
+const shelfLight = new THREE.SpotLight(0xcfc8e8, 0, 3.4, Math.PI/4.0, 0.45, 1.3);
+shelfLight.position.set(-2.4, 2.0, -0.4);
+shelfLight.target.position.set(-3.05, 1.3, -0.6);
+room.add(shelfLight, shelfLight.target);
+// constant soft fill so the skill spines are legible even when the spotlight beat isn't active
+const shelfFill = new THREE.PointLight(0xe8e6df, 0.55, 2.8, 2);
+shelfFill.position.set(-2.7, 1.5, -0.65);
+room.add(shelfFill);
+
+/* ==================================================================
+   BLENDER WORKSTATION CORNER
+   ================================================================== */
+const blenderGroup = new THREE.Group();
+blenderGroup.position.set(1.95, 0, -0.55);
+const sideTable = new THREE.Mesh(new THREE.BoxGeometry(0.6,0.55,0.5), matDeskLeg);
+sideTable.position.y = 0.275;
+sideTable.castShadow = true; sideTable.receiveShadow = true;
+blenderGroup.add(sideTable);
+
+const clayMat = new THREE.MeshStandardMaterial({ color:0x9a958a, roughness:0.9, flatShading:true });
+const wireMat = new THREE.MeshBasicMaterial({ color:0x6ee7d8, wireframe:true });
+const texCanvas = makeCanvas(128,128);
+const texCtx = texCanvas.getContext("2d");
+texCtx.fillStyle = "#d6624f";
+texCtx.fillRect(0,0,128,128);
+for(let i=0;i<40;i++){
+  texCtx.fillStyle = ["#f4e3c8","#f4a259","#e8d6b3"][i%3];
+  texCtx.beginPath();
+  texCtx.ellipse(Math.random()*128, Math.random()*128, 3+Math.random()*3, 1.5, Math.random()*Math.PI, 0, Math.PI*2);
+  texCtx.fill();
+}
+const finalMat = new THREE.MeshStandardMaterial({ map: texFromCanvas(texCanvas), roughness:0.35, metalness:0.05 });
+
+const showpiece = new THREE.Mesh(new THREE.TorusGeometry(0.13,0.06,20,48), clayMat.clone());
+showpiece.position.set(0, 0.68, 0);
+showpiece.castShadow = true;
+blenderGroup.add(showpiece);
+
+// glossy icing coating, sitting just proud of the dough torus
+const icingMat = new THREE.MeshPhysicalMaterial({
+  color:0xf2a6c1, roughness:0.22, metalness:0.02, clearcoat:0.6, clearcoatRoughness:0.25
+});
+const icing = new THREE.Mesh(new THREE.TorusGeometry(0.132,0.064,20,48), icingMat);
+icing.scale.set(1,1,0.86);
+icing.castShadow = true;
+showpiece.add(icing);
+
+// scattered sprinkles, riding on the icing surface
+const sprinkleColors = [0xe63946,0xf4e04d,0x6ee7d8,0x8b7fd6,0xf4a259,0xffffff];
+const sprinkleGeo = new THREE.CapsuleGeometry(0.0028,0.014,3,6);
+const sprinkles = new THREE.Group();
+const sprinkleCount = 26;
+for(let i=0;i<sprinkleCount;i++){
+  const a = Math.random()*Math.PI*2;
+  const b = Math.random()*Math.PI*2;
+  const R = 0.132, r = 0.064;
+  const px = (R + r*Math.cos(b))*Math.cos(a);
+  const py = (R + r*Math.cos(b))*Math.sin(a);
+  const pz = r*Math.sin(b)*0.86;
+  const mat = new THREE.MeshStandardMaterial({ color: sprinkleColors[i % sprinkleColors.length], roughness:0.4 });
+  const sprinkle = new THREE.Mesh(sprinkleGeo, mat);
+  sprinkle.position.set(px,py,pz);
+  sprinkle.lookAt(px*2, py*2, pz*2);
+  sprinkle.rotation.z += (Math.random()-0.5)*1.4;
+  sprinkles.add(sprinkle);
+}
+showpiece.add(sprinkles);
+// icing/sprinkles only read as "on" once the piece reaches its final rendered look
+icing.visible = false;
+sprinkles.visible = false;
+if(reducedMotion){
+  showpiece.material = finalMat;
+  icing.visible = true;
+  sprinkles.visible = true;
+}
+
+room.add(blenderGroup);
+const blenderLight = new THREE.SpotLight(0x6ee7d8, 0, 2.4, Math.PI/5, 0.4, 1.4);
+blenderLight.position.set(1.95, 1.6, 0.2);
+blenderLight.target.position.set(1.95, 0.68, -0.55);
+room.add(blenderLight, blenderLight.target);
+
+/* ---- a small tablet/viewport screen propped against the wall behind the showpiece ---- */
+const viewportCanvas = makeCanvas(360,260);
+const viewportCtx = viewportCanvas.getContext("2d");
+const viewportTex = texFromCanvas(viewportCanvas);
+const viewportPanel = new THREE.Mesh(
+  new THREE.PlaneGeometry(0.34,0.24),
+  new THREE.MeshBasicMaterial({ map: viewportTex, toneMapped:false })
+);
+viewportPanel.position.set(1.95, 1.02, -0.78);
+viewportPanel.rotation.x = -0.15;
+blenderGroup.add(viewportPanel);
+const viewportBezel = new THREE.Mesh(new THREE.PlaneGeometry(0.37,0.27), matPlastic);
+viewportBezel.position.set(1.95, 1.02, -0.785);
+viewportBezel.rotation.x = -0.15;
+blenderGroup.add(viewportBezel);
+
+function drawViewport(phase){ // phase 0..1 across the whole Blender beat
+  const ctx = viewportCtx, w=360, h=260;
+  ctx.clearRect(0,0,w,h);
+  ctx.fillStyle = "#0d0e11"; ctx.fillRect(0,0,w,h);
+  // grid
+  ctx.strokeStyle = "rgba(110,231,216,0.12)"; ctx.lineWidth=1;
+  for(let x=0;x<w;x+=24){ ctx.beginPath(); ctx.moveTo(x,0); ctx.lineTo(x,h); ctx.stroke(); }
+  for(let y=0;y<h;y+=24){ ctx.beginPath(); ctx.moveTo(0,y); ctx.lineTo(w,y); ctx.stroke(); }
+  const cx=w/2, cy=h/2-10, r=58;
+
+  let label = "Viewport";
+  if(phase < 0.34){
+    label = "Clay Render";
+    ctx.fillStyle = "#8f8a80";
+    ctx.beginPath(); ctx.ellipse(cx,cy,r,r*0.7,0,0,Math.PI*2); ctx.fill();
+    ctx.fillStyle = "rgba(0,0,0,0.15)";
+    ctx.beginPath(); ctx.ellipse(cx-14,cy-10,r*0.35,r*0.25,0,0,Math.PI*2); ctx.fill();
+  } else if(phase < 0.67){
+    label = "Wireframe";
+    ctx.strokeStyle = "#6ee7d8"; ctx.lineWidth=1;
+    const rings = 9;
+    for(let i=0;i<rings;i++){
+      const rr = r * (i+1)/rings;
+      ctx.beginPath(); ctx.ellipse(cx,cy,rr,rr*0.55,0,0,Math.PI*2); ctx.stroke();
+    }
+    for(let a=0;a<Math.PI*2;a+=Math.PI/8){
+      ctx.beginPath(); ctx.moveTo(cx,cy); ctx.lineTo(cx+Math.cos(a)*r, cy+Math.sin(a)*r*0.55); ctx.stroke();
+    }
+  } else {
+    const renderT = (phase-0.67)/0.33;
+    if(renderT < 0.85){
+      label = "Cycles — Rendering";
+      ctx.fillStyle = "#8f8a80";
+      ctx.beginPath(); ctx.ellipse(cx,cy,r,r*0.7,0,0,Math.PI*2); ctx.fill();
+      // progress bar
+      ctx.fillStyle = "rgba(255,255,255,0.08)"; ctx.fillRect(40,h-34,w-80,6);
+      ctx.fillStyle = "#f4a259"; ctx.fillRect(40,h-34,(w-80)*Math.min(renderT/0.85,1),6);
+      ctx.font = "11px ui-monospace, monospace"; ctx.fillStyle="rgba(232,230,223,0.5)";
+      ctx.fillText(Math.round(Math.min(renderT/0.85,1)*100)+"% · sample pass", 40, h-42);
+    } else {
+      label = "Final Render";
+      const grad = ctx.createLinearGradient(cx-r,cy-r,cx+r,cy+r);
+      grad.addColorStop(0,"#4a5560"); grad.addColorStop(1,"#2b2f36");
+      ctx.fillStyle = grad;
+      ctx.beginPath(); ctx.ellipse(cx,cy,r,r*0.7,0,0,Math.PI*2); ctx.fill();
+      ctx.fillStyle = "rgba(255,255,255,0.18)";
+      ctx.beginPath(); ctx.ellipse(cx-16,cy-14,14,8,0,0,Math.PI*2); ctx.fill();
+    }
+  }
+  ctx.font = "12px ui-monospace, monospace";
+  ctx.fillStyle = "rgba(232,230,223,0.55)";
+  ctx.fillText(label, 12, 20);
+  viewportTex.needsUpdate = true;
+}
+drawViewport(0);
+
+/* ==================================================================
+   DUST PARTICLES
+   ================================================================== */
+const dustCount = reducedMotion ? 0 : 260;
+const dustGeo = new THREE.BufferGeometry();
+const dustPos = new Float32Array(dustCount*3);
+const dustSpeed = new Float32Array(dustCount);
+for(let i=0;i<dustCount;i++){
+  dustPos[i*3]   = (Math.random()-0.5)*6.5;
+  dustPos[i*3+1] = Math.random()*3.2;
+  dustPos[i*3+2] = (Math.random()-0.5)*4 - 0.5;
+  dustSpeed[i] = 0.02 + Math.random()*0.05;
+}
+dustGeo.setAttribute("position", new THREE.BufferAttribute(dustPos,3));
+const dust = new THREE.Points(dustGeo, new THREE.PointsMaterial({ color:0xfff2df, size:0.012, transparent:true, opacity:0.35, depthWrite:false, blending:THREE.AdditiveBlending }));
+room.add(dust);
+
+/* ==================================================================
+   LIGHTS (base)
+   ================================================================== */
+const hemi = new THREE.HemisphereLight(0x4a3c2c, 0x1a1512, 0.4);
+scene.add(hemi);
+const fillAmb = new THREE.AmbientLight(0x3a3228, 0.32);
+scene.add(fillAmb);
+
+/* ==================================================================
+   MONITOR SCREEN CONTENT
+   ================================================================== */
+const bootLines = [
+  "DHRUV OS",
+  "",
+  "Creative Engineer loading...",
+  "",
+  "Software        [ OK ]",
+  "Artificial Intel [ OK ]",
+  "Design           [ OK ]",
+  "Blender          [ OK ]",
+  "Game Dev         [ OK ]",
+];
+let bootStart = null;
+let bootDone = false;
+let screenTransitionStart = performance.now();
+let screenTransitionKind = "boot";
+
+const beatToAppName = {
+  boot: "", identity: "IDENTITY.app", applications: "APPLICATIONS",
+  connection: "Connection.app", idle: ""
+};
+
+function drawScreen(kind, t){
+  if(kind !== screenTransitionKind){
+    screenTransitionKind = kind;
+    screenTransitionStart = performance.now();
+  }
+  const openT = THREE.MathUtils.clamp((performance.now()-screenTransitionStart)/480, 0, 1);
+  const openEase = 1 - Math.pow(1-openT, 3);
+
+  const ctx = screenCtx;
+  ctx.clearRect(0,0,1024,576);
+  // background
+  ctx.fillStyle = "#0a0b0d";
+  ctx.fillRect(0,0,1024,576);
+
+  // macOS-style menu bar — persistent OS chrome, does not animate with window content
+  if(kind !== "boot"){
+    ctx.fillStyle = "rgba(20,21,25,0.9)";
+    ctx.fillRect(0,0,1024,34);
+    ["#d6624f","#f4a259","#6ee7d8"].forEach((c,i)=>{
+      ctx.fillStyle = c;
+      ctx.beginPath(); ctx.arc(26+i*20,17,5,0,Math.PI*2); ctx.fill();
+    });
+    ctx.font = "13px ui-monospace, monospace";
+    ctx.fillStyle = "rgba(232,230,223,0.6)";
+    ctx.fillText(beatToAppName[kind] || "DHRUV_OS", 100, 22);
+    ctx.textAlign = "right";
+    ctx.fillText("DHRUV_OS", 990, 22);
+    ctx.textAlign = "left";
+  }
+
+  // content area animates in (scale + fade) each time the section changes
+  ctx.save();
+  ctx.globalAlpha = openEase;
+  const cx = 512, cy = 320;
+  const sc = 0.97 + 0.03*openEase;
+  ctx.translate(cx,cy); ctx.scale(sc,sc); ctx.translate(-cx, -cy - (1-openEase)*10);
+
+  if(kind === "boot"){
+    const elapsed = bootStart===null ? 0 : (performance.now()-bootStart)/1000;
+    ctx.font = "600 46px ui-monospace, monospace";
+    ctx.fillStyle = "#e8e6df";
+    ctx.fillText("DHRUV OS", 60, 100);
+    ctx.font = "20px ui-monospace, monospace";
+    let visibleLines = Math.min(bootLines.length, Math.floor(elapsed/0.4)+1);
+    let y = 170;
+    for(let i=2;i<visibleLines;i++){
+      const line = bootLines[i];
+      ctx.fillStyle = line.includes("OK") ? "#6ee7d8" : "rgba(232,230,223,0.75)";
+      ctx.fillText(line, 60, y);
+      y += 40;
+    }
+    if(visibleLines >= bootLines.length){
+      bootDone = true;
+      ctx.fillStyle = "#f4a259";
+      ctx.font = "20px ui-monospace, monospace";
+      ctx.fillText("> ready — scroll to explore", 60, y+20);
+    }
+  }
+
+  if(kind === "identity"){
+    ctx.font = "600 42px ui-monospace, monospace";
+    ctx.fillStyle = "#e8e6df";
+    ctx.fillText("IDENTITY", 60, 90);
+    ctx.font = "19px ui-monospace, monospace";
+    const bio = [
+      "Dhruv Rajput",
+      "Computer Engineering (AI & ML) student",
+      "",
+      "Building at the intersection of",
+      "software, interface design, and 3D.",
+      "",
+      "Currently: this room."
+    ];
+    let y = 150;
+    bio.forEach(line=>{
+      ctx.fillStyle = line.startsWith("Dhruv") ? "#6ee7d8" : "rgba(232,230,223,0.8)";
+      ctx.fillText(line, 60, y);
+      y += 36;
+    });
+  }
+
+  if(kind === "applications"){
+    ctx.font = "600 30px ui-monospace, monospace";
+    ctx.fillStyle = "#e8e6df";
+    ctx.fillText("APPLICATIONS", 60, 60);
+    // window 1
+    drawAppWindow(ctx, 60, 100, 430, 400, "MetroFlow.app",
+      ["Realtime transit-flow visualizer.", "", "Custom force graph engine,", "WebGL rendering, live data.", "", "solo build · 2024"]);
+    // window 2
+    drawAppWindow(ctx, 530, 140, 430, 360, "DhruvOS.app",
+      ["This room.", "", "R3F + GSAP ScrollTrigger,", "procedural room, scroll-driven", "cinematic camera.", "", "you are here · 2026"]);
+  }
+
+  if(kind === "connection"){
+    drawPhoneContact(ctx);
+  }
+
+  if(kind === "idle"){
+    // screen goes to a quiet standby state — no attention-grabbing text while
+    // the boot log / blender corner / skills shelf are the actual focus
+    ctx.fillStyle = "rgba(0,0,0,0.35)";
+    ctx.fillRect(0,0,1024,576);
+    const blink = 0.25 + 0.25*Math.abs(Math.sin(performance.now()/900));
+    ctx.fillStyle = `rgba(110,231,216,${blink.toFixed(2)})`;
+    ctx.beginPath(); ctx.arc(980, 550, 4, 0, Math.PI*2); ctx.fill();
+  }
+
+  ctx.restore();
+  screenTex.needsUpdate = true;
+}
+function drawAppWindow(ctx,x,y,w,h,title,lines){
+  ctx.fillStyle = "#141519";
+  ctx.fillRect(x,y,w,h);
+  ctx.strokeStyle = "rgba(255,255,255,0.08)";
+  ctx.strokeRect(x,y,w,h);
+  ctx.fillStyle = "#1c1d22";
+  ctx.fillRect(x,y,w,34);
+  ["#d6624f","#f4a259","#6ee7d8"].forEach((c,i)=>{
+    ctx.fillStyle = c;
+    ctx.beginPath(); ctx.arc(x+18+i*20,y+17,5,0,Math.PI*2); ctx.fill();
+  });
+  ctx.fillStyle = "rgba(232,230,223,0.7)";
+  ctx.font = "15px ui-monospace, monospace";
+  ctx.fillText(title, x+90, y+22);
+  let ty = y+70;
+  lines.forEach(line=>{
+    ctx.fillStyle = line ? "rgba(232,230,223,0.75)" : "transparent";
+    ctx.font = "16px ui-monospace, monospace";
+    ctx.fillText(line, x+24, ty);
+    ty += 28;
+  });
+}
+
+/* Contact, presented as a phone mockup — email / GitHub / LinkedIn as tappable-style rows.
+   NOTE: placeholder details below — swap in the real handles before shipping. */
+function drawPhoneContact(ctx){
+  const cx = 512, top = 40, w = 300, h = 500, r = 34;
+  // phone body
+  roundRect(ctx, cx-w/2, top, w, h, r);
+  ctx.fillStyle = "#101114";
+  ctx.fill();
+  ctx.lineWidth = 3;
+  ctx.strokeStyle = "rgba(255,255,255,0.06)";
+  ctx.stroke();
+  // notch
+  roundRect(ctx, cx-46, top+14, 92, 16, 8);
+  ctx.fillStyle = "#000"; ctx.fill();
+  // status bar
+  ctx.font = "12px ui-monospace, monospace";
+  ctx.fillStyle = "rgba(232,230,223,0.5)";
+  ctx.fillText("9:41", cx-w/2+22, top+40);
+
+  // header
+  ctx.textAlign = "center";
+  ctx.font = "600 20px ui-monospace, monospace";
+  ctx.fillStyle = "#e8e6df";
+  ctx.fillText("Connection.app", cx, top+80);
+  ctx.font = "13px ui-monospace, monospace";
+  ctx.fillStyle = "rgba(110,231,216,0.75)";
+  ctx.fillText("Dhruv Rajput", cx, top+102);
+  ctx.textAlign = "left";
+
+  // avatar ring
+  ctx.beginPath();
+  ctx.arc(cx, top+150, 26, 0, Math.PI*2);
+  ctx.fillStyle = "#1c1d22"; ctx.fill();
+  ctx.strokeStyle = "#6ee7d8"; ctx.lineWidth = 2; ctx.stroke();
+  ctx.font = "600 20px ui-monospace, monospace";
+  ctx.fillStyle = "#6ee7d8"; ctx.textAlign="center";
+  ctx.fillText("DR", cx, top+157);
+  ctx.textAlign = "left";
+
+  // contact rows
+  const rows = [
+    { icon:"mail",   label:"Email",    value:"contact",         url:"mailto:devdhruv88@gmail.com" },
+    { icon:"github", label:"GitHub",   value:"git",        url:"https://github.com/dhruv0807" },
+    { icon:"linked", label:"LinkedIn", value:"CONNECT",   url:"https://www.linkedin.com/in/dhruv-rajput-66532a2b2/" },
+  ];
+  let ry = top + 200;
+  const rowH = 66, rowW = w-48, rx = cx-w/2+24;
+  contactHitRects.length = 0;
+  rows.forEach(row=>{
+    roundRect(ctx, rx, ry, rowW, rowH-10, 14);
+    const isHover = hoveredContactRow && hoveredContactRow.url === row.url;
+    ctx.fillStyle = isHover ? "rgba(110,231,216,0.14)" : "rgba(255,255,255,0.04)";
+    ctx.fill();
+    if(isHover){ ctx.strokeStyle = "rgba(110,231,216,0.5)"; ctx.lineWidth = 1.5; ctx.stroke(); }
+    drawContactIcon(ctx, row.icon, rx+30, ry+(rowH-10)/2);
+    ctx.font = "12px ui-monospace, monospace";
+    ctx.fillStyle = "rgba(232,230,223,0.45)";
+    ctx.fillText(row.label, rx+58, ry+22);
+    ctx.font = "14px ui-monospace, monospace";
+    ctx.fillStyle = "#e8e6df";
+    ctx.fillText(row.value, rx+58, ry+40);
+    // little "tap" chevron to signal interactivity
+    ctx.fillStyle = "rgba(232,230,223,0.3)";
+    ctx.font = "14px ui-monospace, monospace";
+    ctx.fillText("›", rx+rowW-22, ry+(rowH-10)/2+5);
+    contactHitRects.push({ x:rx, y:ry, w:rowW, h:rowH-10, url:row.url, label:row.label });
+    ry += rowH;
+  });
+
+  ctx.font = "13px ui-monospace, monospace";
+  ctx.fillStyle = "#f4a259";
+  ctx.textAlign = "center";
+  ctx.fillText("Let's build something meaningful.", cx, top+h-24);
+  ctx.textAlign = "left";
+}
+function roundRect(ctx,x,y,w,h,r){
+  ctx.beginPath();
+  ctx.moveTo(x+r,y);
+  ctx.arcTo(x+w,y,x+w,y+h,r);
+  ctx.arcTo(x+w,y+h,x,y+h,r);
+  ctx.arcTo(x,y+h,x,y,r);
+  ctx.arcTo(x,y,x+w,y,r);
+  ctx.closePath();
+}
+function drawContactIcon(ctx, kind, x, y){
+  ctx.save();
+  ctx.translate(x,y);
+  ctx.strokeStyle = "#6ee7d8";
+  ctx.fillStyle = "#6ee7d8";
+  ctx.lineWidth = 1.6;
+  if(kind === "mail"){
+    ctx.strokeRect(-11,-8,22,16);
+    ctx.beginPath(); ctx.moveTo(-11,-8); ctx.lineTo(0,3); ctx.lineTo(11,-8); ctx.stroke();
+  } else if(kind === "github"){
+    ctx.beginPath(); ctx.arc(0,-2,10,0,Math.PI*2); ctx.stroke();
+    ctx.beginPath(); ctx.moveTo(-6,10); ctx.lineTo(-6,4); ctx.lineTo(6,4); ctx.lineTo(6,10); ctx.stroke();
+  } else if(kind === "linked"){
+    ctx.strokeRect(-10,-10,20,20);
+    ctx.beginPath(); ctx.arc(-4,-4,2,0,Math.PI*2); ctx.fill();
+    ctx.fillRect(-6,0,4,7);
+    ctx.fillRect(2,-2,4,9);
+  }
+  ctx.restore();
+}
+
+/* ==================================================================
+   CAMERA PATH  (progress 0..1)
+   ================================================================== */
+const keyframes = [
+  { t:0.00, pos:[0.0, 1.35, 4.2],  look:[0.0, 1.0,  -1.32] },
+  { t:0.06, pos:[0.05,1.15, 2.3],  look:[0.02,0.92, -1.33] },
+  { t:0.10, pos:[0.15,1.05, 1.55], look:[0.05,0.90, -1.33] },
+  { t:0.27, pos:[0.55,1.05, 1.15], look:[0.20,0.90, -1.30] },
+  { t:0.44, pos:[1.55,1.15, 0.55], look:[1.9, 0.85, -0.6]  },
+  { t:0.60, pos:[-0.35,1.55,0.95], look:[-0.48,2.05,-2.05] },
+  { t:0.77, pos:[-1.9,1.15, 0.35], look:[-3.0, 1.2, -0.6]  },
+  { t:0.90, pos:[-0.3,1.15, 1.6],  look:[-0.05,0.95,-1.3]  },
+  { t:1.00, pos:[0.1, 1.05, 1.05], look:[0.03, 0.90,-1.32] },
+];
+const _pA = new THREE.Vector3(), _pB = new THREE.Vector3();
+const _lA = new THREE.Vector3(), _lB = new THREE.Vector3();
+const _pOut = new THREE.Vector3(), _lOut = new THREE.Vector3();
+
+function evalCamera(t, outPos, outLook){
+  let i = 0;
+  while(i < keyframes.length-2 && t > keyframes[i+1].t) i++;
+  const k0 = keyframes[i], k1 = keyframes[i+1];
+  const span = (k1.t - k0.t) || 1e-6;
+  let alpha = (t - k0.t) / span;
+  alpha = THREE.MathUtils.clamp(alpha, 0, 1);
+  alpha = smooth01(alpha, 0, 1);
+  _pA.set(...k0.pos); _pB.set(...k1.pos);
+  _lA.set(...k0.look); _lB.set(...k1.look);
+  outPos.lerpVectors(_pA,_pB,alpha);
+  outLook.lerpVectors(_lA,_lB,alpha);
+}
+
+/* ==================================================================
+   BEATS
+   ================================================================== */
+const beats = [
+  { name:"SYSTEM_BOOT",            from:0.00, to:0.10 },
+  { name:"IDENTITY.exe",           from:0.10, to:0.27 },
+  { name:"APPLICATIONS.exe",       from:0.27, to:0.44 },
+  { name:"BLENDER_WORKSTATION.exe",from:0.44, to:0.60 },
+  { name:"BOOT_LOG.sys",           from:0.60, to:0.77 },
+  { name:"SKILLS.lib",             from:0.77, to:0.92 },
+  { name:"CONNECTION_ESTABLISHED", from:0.92, to:1.00 },
+];
+const hudBeat = document.getElementById("beat-label");
+const hudBar  = document.getElementById("beat-bar");
+const introHint = document.getElementById("intro-hint");
+let lastBeatName = "";
+let lastScreenKind = "";
+
+function updateBeat(t){
+  const b = beats.find(b=>t>=b.from && t<=b.to) || beats[beats.length-1];
+  if(b.name !== lastBeatName){
+    hudBeat.textContent = b.name;
+    lastBeatName = b.name;
+  }
+  const localT = THREE.MathUtils.clamp((t-b.from)/((b.to-b.from)||1),0,1);
+  hudBar.style.width = (localT*100).toFixed(1)+"%";
+
+  if(t < 0.015){
+    introHint.textContent = "";
+    introHint.innerHTML = "scroll to enter<span>↓</span>";
+    introHint.style.opacity = 1;
+  } else if(t > 0.94){
+    introHint.innerHTML = "tap a row to connect";
+    introHint.style.opacity = 1;
+  } else {
+    introHint.style.opacity = 0;
+  }
+
+  // choose screen content
+  let kind = "idle";
+  if(t < 0.10) kind = "boot";
+  else if(t < 0.27) kind = "identity";
+  else if(t < 0.44) kind = "applications";
+  else if(t > 0.92) kind = "connection";
+
+  if(kind === "boot" && bootStart === null) bootStart = performance.now();
+  lastScreenKind = kind;
+  drawScreen(kind, t);
+}
+
+/* ==================================================================
+   LIGHTING per progress
+   ================================================================== */
+function updateLighting(t, elapsed){
+  // lamp: dim at very start, full through the middle, dims again at the end
+  lampLight.intensity = trapezoid(t, 0.02, 0.09, 0.88, 0.98) * 1.7;
+  const flicker = reducedMotion ? 1 : (0.94 + Math.sin(elapsed*9.0)*0.03 + Math.sin(elapsed*23.0)*0.015);
+  lampLight.intensity *= flicker;
+
+  // monitor glow: on after boot starts, dims to standby while another wall/corner is the focus
+  const monitorIdle = trapezoid(t, 0.42, 0.46, 0.90, 0.94);
+  screenLight.intensity = smooth01(t,0.01,0.06) * (0.7 - monitorIdle*0.45);
+  monitorKeyLight.intensity = 1.0 - monitorIdle*0.55;
+
+  // keyboard backlight: slow, quiet breathing — fixed desaturated color, never a rainbow
+  const breathe = 0.5 + Math.sin(elapsed*0.55)*0.5;
+  const kbAmt = smooth01(t,0.05,0.15);
+  rgbStrip.material.opacity = kbAmt * (0.35 + breathe*0.3);
+  mouseGlow.material.opacity = kbAmt * (0.3 + breathe*0.25);
+
+  // moonlight: quiet and constant, a touch brighter when the lamp is off (boot / connection)
+  const lampOff = 1 - trapezoid(t,0.02,0.09,0.88,0.98);
+  moonLight.intensity = 0.28 + lampOff*0.22;
+  moonFill.intensity = 0.10 + lampOff*0.08;
+
+  // boot log wall
+  const logAmt = trapezoid(t,0.55,0.62,0.75,0.82);
+  bootLogLight.intensity = logAmt * 2.0;
+  bootLogPanel.material.opacity = logAmt;
+
+  // shelf / skills
+  const shelfAmt = trapezoid(t,0.68,0.75,0.92,0.98);
+  shelfLight.intensity = shelfAmt * 3.2;
+
+  // blender corner
+  const blenderAmt = trapezoid(t,0.40,0.47,0.58,0.64);
+  blenderLight.intensity = blenderAmt * 2.0;
+
+  // ambient dips slightly near boot + ending for drama, but never goes fully dark — stays cozy
+  hemi.intensity = 0.34 + smooth01(t,0.0,0.08)*0.08 - trapezoid(t,0.9,0.97,0.97,1.0)*0.04;
+}
+
+/* ==================================================================
+   SCROLL DRIVER
+   ================================================================== */
+const spacer = document.getElementById("scroll-spacer");
+let targetProgress = 0;
+let currentProgress = 0;
+
+function getMaxScroll(){
+  return Math.max(1, spacer.offsetHeight - window.innerHeight);
+}
+window.addEventListener("scroll", ()=>{
+  targetProgress = THREE.MathUtils.clamp(window.scrollY / getMaxScroll(), 0, 1);
+}, { passive:true });
+
+/* mouse parallax */
+let mouseX = 0, mouseY = 0;
+window.addEventListener("pointermove", (e)=>{
+  mouseX = (e.clientX / window.innerWidth) * 2 - 1;
+  mouseY = (e.clientY / window.innerHeight) * 2 - 1;
+});
+
+/* bookshelf hover — raycast against the skill books, highlight what's under the cursor */
+const raycaster = new THREE.Raycaster();
+let hoveredBook = null;
+
+/* connection screen — click a contact row (email / GitHub / LinkedIn) to open it */
+function hitTestContactRow(clientX, clientY){
+  const ndc = new THREE.Vector2(
+    (clientX / window.innerWidth) * 2 - 1,
+    -(clientY / window.innerHeight) * 2 + 1
+  );
+  raycaster.setFromCamera(ndc, camera);
+  const hits = raycaster.intersectObject(screenMesh, false);
+  if(!hits.length || !hits[0].uv) return null;
+  const px = hits[0].uv.x * 1024;
+  const py = (1 - hits[0].uv.y) * 576;
+  return contactHitRects.find(r => px>=r.x && px<=r.x+r.w && py>=r.y && py<=r.y+r.h) || null;
+}
+canvas.addEventListener("pointermove", (e)=>{
+  if(lastScreenKind !== "connection"){
+    if(hoveredContactRow){ hoveredContactRow = null; canvas.style.cursor = ""; }
+    return;
+  }
+  const row = hitTestContactRow(e.clientX, e.clientY);
+  if(row !== hoveredContactRow){
+    hoveredContactRow = row;
+    canvas.style.cursor = row ? "pointer" : "";
+  }
+});
+canvas.addEventListener("click", (e)=>{
+  if(lastScreenKind !== "connection") return;
+  const row = hitTestContactRow(e.clientX, e.clientY);
+  if(row) window.open(row.url, row.url.startsWith("mailto:") ? "_self" : "_blank");
+});
+
+/* resize */
+window.addEventListener("resize", ()=>{
+  camera.aspect = window.innerWidth/window.innerHeight;
+  camera.updateProjectionMatrix();
+  renderer.setSize(window.innerWidth, window.innerHeight);
+  composer.setSize(window.innerWidth, window.innerHeight);
+  bloom.setSize(window.innerWidth, window.innerHeight);
+});
+
+/* veil fade-in on first interaction/load */
+requestAnimationFrame(()=>{
+  document.getElementById("veil").style.opacity = 0;
+});
+
+/* ==================================================================
+   RENDER LOOP
+   ================================================================== */
+const clock = new THREE.Clock();
+const right = new THREE.Vector3(), up = new THREE.Vector3(0,1,0);
+const baseFov = 42;
+let mouseXSmooth = 0, mouseYSmooth = 0;
+
+function animate(){
+  const delta = Math.min(clock.getDelta(), 0.05);
+  const elapsed = clock.getElapsedTime();
+
+  // softer follow on the scroll target itself — reads less like a scrollbar, more like a dolly with weight
+  currentProgress = THREE.MathUtils.damp(currentProgress, targetProgress, 3.2, delta);
+
+  evalCamera(currentProgress, _pOut, _lOut);
+
+  // inertial mouse tracking — the parallax lags slightly behind the cursor, like a handheld operator
+  mouseXSmooth = THREE.MathUtils.damp(mouseXSmooth, mouseX, 2.6, delta);
+  mouseYSmooth = THREE.MathUtils.damp(mouseYSmooth, mouseY, 2.6, delta);
+
+  right.crossVectors(_lOut.clone().sub(_pOut).normalize(), up).normalize();
+  const parX = mouseXSmooth * 0.10;
+  const parY = -mouseYSmooth * 0.05;
+
+  camera.position.copy(_pOut);
+
+  // handheld micro-sway — small, layered, never mechanical
+  if(!reducedMotion){
+    camera.position.x += Math.sin(elapsed*0.9)*0.006 + Math.sin(elapsed*2.35)*0.0025;
+    camera.position.y += Math.sin(elapsed*1.15+1.7)*0.005 + Math.sin(elapsed*3.1)*0.0018;
+    camera.position.z += Math.sin(elapsed*0.7+0.6)*0.004;
+    // a slow, barely-there breathing on the lens
+    camera.fov = baseFov + Math.sin(elapsed*0.35)*0.35;
+    camera.updateProjectionMatrix();
+  }
+
+  const finalLook = _lOut.clone().addScaledVector(right, parX).addScaledVector(up, parY);
+  camera.lookAt(finalLook);
+
+  updateBeat(currentProgress);
+  updateLighting(currentProgress, elapsed);
+
+  // Blender workstation: sync the little viewport screen to the same clay/wire/render phase
+  const blenderPhase = THREE.MathUtils.clamp((currentProgress-0.44)/0.16, 0, 1);
+  if(currentProgress > 0.40 && currentProgress < 0.66) drawViewport(blenderPhase);
+
+  // bookshelf hover — nudge the hovered book forward with a faint glow
+  raycaster.setFromCamera({ x: mouseXSmooth, y: -mouseYSmooth }, camera);
+  const hits = raycaster.intersectObjects(bookMeshes, false);
+  const newHover = hits.length ? hits[0].object : null;
+  if(newHover !== hoveredBook) hoveredBook = newHover;
+  bookMeshes.forEach(book=>{
+    const isHover = book === hoveredBook && currentProgress > 0.72;
+    const targetX = book.userData.baseX + (isHover ? 0.05 : 0);
+    book.position.x = THREE.MathUtils.damp(book.position.x, targetX, 8, delta);
+    const targetEmissive = isHover ? 0.4 : 0;
+    book.material[4].emissiveIntensity = THREE.MathUtils.damp(book.material[4].emissiveIntensity, targetEmissive, 8, delta);
+  });
+
+  if(!reducedMotion){
+    showpiece.rotation.y += delta*0.6;
+    showpiece.rotation.x += delta*0.15;
+    // material swap across the blender beat
+    const bt = THREE.MathUtils.clamp((currentProgress-0.44)/0.16, 0, 1);
+    if(bt < 0.34) showpiece.material = clayMat;
+    else if(bt < 0.67) showpiece.material = wireMat;
+    else showpiece.material = finalMat;
+    icing.visible = bt >= 0.67;
+    sprinkles.visible = bt >= 0.67;
+
+    // dust drift
+    const posAttr = dust.geometry.attributes.position;
+    for(let i=0;i<dustCount;i++){
+      let y = posAttr.getY(i) + dustSpeed[i]*delta;
+      if(y > 3.2) y = 0;
+      posAttr.setY(i, y);
+      posAttr.setX(i, posAttr.getX(i) + Math.sin(elapsed*0.5+i)*0.0004);
+    }
+    posAttr.needsUpdate = true;
+
+    // steam drift
+    const steamAttr = steam.geometry.attributes.position;
+    for(let i=0;i<steamCount;i++){
+      let y = steamAttr.getY(i) + delta*0.15;
+      if(y > 1.15){ y = 0.86; }
+      steamAttr.setY(i,y);
+      steamAttr.setX(i, steamAttr.getX(i) + Math.sin(elapsed*2+i)*0.0006);
+    }
+    steamAttr.needsUpdate = true;
+  }
+
+  // keep boot screen live while playing
+  if(!bootDone && currentProgress < 0.10){
+    drawScreen("boot", currentProgress);
+  }
+
+  composer.render();
+  requestAnimationFrame(animate);
+}
+animate();
+
+/* initial draw so the monitor isn't blank before first frame */
+drawScreen("boot", 0);
+</script>
+</body>
+</html>
