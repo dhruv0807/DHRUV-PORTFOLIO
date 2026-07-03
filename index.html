@@ -263,20 +263,55 @@ room.add(monitorKeyLight, monitorKeyTarget);
 monitorKeyLight.target = monitorKeyTarget;
 room.add(monitorGroup);
 
-/* ---- keyboard + white backlight ---- */
-const keyboard = new THREE.Mesh(new THREE.BoxGeometry(0.62,0.03,0.22), matPlastic);
+/* ---- keyboard: mechanical case + full per-key RGB backlight ---- */
+const matKbCase = new THREE.MeshStandardMaterial({ color:0x1c1d21, roughness:0.5, metalness:0.25 });
+const keyboard = new THREE.Mesh(new THREE.BoxGeometry(0.62,0.03,0.22), matKbCase);
 keyboard.position.set(-0.15, 0.815, -0.75);
 keyboard.castShadow = true;
 room.add(keyboard);
-// soft white backlight along the keyboard's front edge — a material glow only, no point light,
-// which is what was producing the odd bright "dot" reflection on the desk before
+// a slim raised top bezel gives the case a two-tier, "mechanical keyboard" silhouette
+const kbBezel = new THREE.Mesh(new THREE.BoxGeometry(0.6,0.006,0.20), matKbCase);
+kbBezel.position.set(-0.15, 0.8345, -0.75);
+room.add(kbBezel);
+
+// individual keycaps, drawn as one InstancedMesh so the whole board is a single draw call.
+// each key carries its own color, animated as a travelling rainbow wave in updateLighting()
+const KB_COLS = 15, KB_ROWS = 5;
+const kbInnerW = 0.56, kbInnerD = 0.18;
+const keycapGeo = new THREE.BoxGeometry(0.031,0.014,0.029);
+const keycapMat = new THREE.MeshStandardMaterial({ color:0xffffff, roughness:0.3, metalness:0.05, vertexColors:true });
+const keycaps = new THREE.InstancedMesh(keycapGeo, keycapMat, KB_COLS*KB_ROWS);
+keycaps.instanceColor = new THREE.InstancedBufferAttribute(new Float32Array(KB_COLS*KB_ROWS*3), 3);
+const keycapBaseX = [];
+{
+  const dummy = new THREE.Object3D();
+  let ki = 0;
+  for(let r=0;r<KB_ROWS;r++){
+    for(let c=0;c<KB_COLS;c++){
+      const x = -0.15 + (-kbInnerW/2 + (c+0.5)*(kbInnerW/KB_COLS));
+      const z = -0.75 + (-kbInnerD/2 + (r+0.5)*(kbInnerD/KB_ROWS));
+      dummy.position.set(x, 0.8375, z);
+      dummy.updateMatrix();
+      keycaps.setMatrixAt(ki, dummy.matrix);
+      keycaps.setColorAt(ki, new THREE.Color(0xffffff));
+      keycapBaseX.push(x);
+      ki++;
+    }
+  }
+}
+keycaps.instanceMatrix.needsUpdate = true;
+keycaps.castShadow = true;
+room.add(keycaps);
+
+// soft RGB underglow along the keyboard's front edge — color-synced with the keycaps above
 const rgbStrip = new THREE.Mesh(
   new THREE.PlaneGeometry(0.58,0.016),
-  new THREE.MeshBasicMaterial({ color:0xf3f1ea, transparent:true, opacity:0.5, toneMapped:false })
+  new THREE.MeshBasicMaterial({ color:0xffffff, transparent:true, opacity:0.5, toneMapped:false })
 );
 rgbStrip.rotation.x = -Math.PI/2;
 rgbStrip.position.set(-0.15, 0.8305, -0.845);
 room.add(rgbStrip);
+const _kbColor = new THREE.Color();
 
 /* ---- headphones, resting on the monitor's top edge ---- */
 const headphonesGroup = new THREE.Group();
@@ -352,16 +387,40 @@ for(let i=0;i<2;i++){
   room.add(pin);
 }
 
-/* ---- mouse ---- */
-const mouse3d = new THREE.Mesh(new THREE.CapsuleGeometry(0.035,0.06,4,8), matPlastic);
+/* ---- mouse: refined RGB gaming-mouse silhouette ---- */
+const matMouseBody = new THREE.MeshStandardMaterial({ color:0x1f2024, roughness:0.4, metalness:0.2 });
+const mouse3d = new THREE.Mesh(new THREE.CapsuleGeometry(0.035,0.06,6,12), matMouseBody);
 mouse3d.rotation.z = Math.PI/2;
 mouse3d.position.set(0.42, 0.81, -0.7);
 mouse3d.castShadow = true;
 room.add(mouse3d);
-// soft white backlight glow under the mouse, matching the keyboard's white RGB
+// scroll wheel, proud of the shell's top center
+const scrollWheel = new THREE.Mesh(
+  new THREE.CylinderGeometry(0.007,0.007,0.02,12),
+  new THREE.MeshStandardMaterial({ color:0x0c0c0e, roughness:0.5 })
+);
+scrollWheel.rotation.z = Math.PI/2;
+scrollWheel.position.set(0.42, 0.845, -0.7);
+room.add(scrollWheel);
+// left/right click seam running front-to-back
+const clickSeam = new THREE.Mesh(
+  new THREE.BoxGeometry(0.001,0.001,0.05),
+  new THREE.MeshStandardMaterial({ color:0x000000, roughness:0.9 })
+);
+clickSeam.position.set(0.42, 0.8435, -0.7);
+room.add(clickSeam);
+// glowing RGB spine along the top of the shell — color-synced with the keyboard's rainbow
+const mouseSpine = new THREE.Mesh(
+  new THREE.CapsuleGeometry(0.005,0.045,4,8),
+  new THREE.MeshBasicMaterial({ color:0xffffff, transparent:true, opacity:0.7, toneMapped:false })
+);
+mouseSpine.rotation.z = Math.PI/2;
+mouseSpine.position.set(0.42, 0.847, -0.685);
+room.add(mouseSpine);
+// soft RGB glow pooling under the mouse, matching the keyboard's per-key backlight
 const mouseGlow = new THREE.Mesh(
   new THREE.RingGeometry(0.032,0.046,28),
-  new THREE.MeshBasicMaterial({ color:0xf3f1ea, transparent:true, opacity:0.45, toneMapped:false, side:THREE.DoubleSide })
+  new THREE.MeshBasicMaterial({ color:0xffffff, transparent:true, opacity:0.45, toneMapped:false, side:THREE.DoubleSide })
 );
 mouseGlow.rotation.x = -Math.PI/2;
 mouseGlow.position.set(0.42, 0.796, -0.7);
@@ -496,7 +555,7 @@ const shelfBase = new THREE.Mesh(new THREE.BoxGeometry(0.16,0.02,1.5), matWood);
 shelfBase.position.set(0.08,0.75,0);
 shelfGroup.add(shelfBase);
 
-const skills = ["React","Three.js","AI / ML","UI · UX","Blender","Game Dev","WEB DEV"];
+const skills = ["React","Three.js","AI / ML","UI · UX","Blender","Game Dev","TypeScript"];
 const bookColors = [0xb85c38,0xf4a259,0x6ee7d8,0x8b7fd6,0x5a8f6a,0xd6624f,0x3b6f8f];
 function makeSpineTexture(label, color){
   const c = makeCanvas(64,320);
@@ -586,7 +645,10 @@ for(let i=0;i<40;i++){
 const finalMat = new THREE.MeshStandardMaterial({ map: texFromCanvas(texCanvas), roughness:0.35, metalness:0.05 });
 
 const showpiece = new THREE.Mesh(new THREE.TorusGeometry(0.13,0.06,20,48), clayMat.clone());
-showpiece.position.set(0, 0.68, 0);
+// lie the torus flat (hole facing up) so it rests ON the side table — by default a
+// THREE.TorusGeometry stands upright like a wheel, which was letting it sink through the tabletop
+showpiece.rotation.x = Math.PI/2;
+showpiece.position.set(0, 0.61, 0);
 showpiece.castShadow = true;
 blenderGroup.add(showpiece);
 
@@ -631,7 +693,7 @@ if(reducedMotion){
 room.add(blenderGroup);
 const blenderLight = new THREE.SpotLight(0x6ee7d8, 0, 2.4, Math.PI/5, 0.4, 1.4);
 blenderLight.position.set(1.95, 1.6, 0.2);
-blenderLight.target.position.set(1.95, 0.68, -0.55);
+blenderLight.target.position.set(1.95, 0.61, -0.55);
 room.add(blenderLight, blenderLight.target);
 
 /* ---- a small tablet/viewport screen propped against the wall behind the showpiece ---- */
@@ -929,9 +991,9 @@ function drawPhoneContact(ctx){
 
   // contact rows
   const rows = [
-    { icon:"mail",   label:"Email",    value:"contact",         url:"mailto:devdhruv88@gmail.com" },
-    { icon:"github", label:"GitHub",   value:"git",        url:"https://github.com/dhruv0807" },
-    { icon:"linked", label:"LinkedIn", value:"CONNECT",   url:"https://www.linkedin.com/in/dhruv-rajput-66532a2b2/" },
+    { icon:"mail",   label:"Email",    value:"hello@dhruvrajput.dev",         url:"mailto:hello@dhruvrajput.dev" },
+    { icon:"github", label:"GitHub",   value:"github.com/dhruvrajput",        url:"https://github.com/dhruvrajput" },
+    { icon:"linked", label:"LinkedIn", value:"linkedin.com/in/dhruvrajput",   url:"https://linkedin.com/in/dhruvrajput" },
   ];
   let ry = top + 200;
   const rowH = 66, rowW = w-48, rx = cx-w/2+24;
@@ -1089,11 +1151,28 @@ function updateLighting(t, elapsed){
   screenLight.intensity = smooth01(t,0.01,0.06) * (0.7 - monitorIdle*0.45);
   monitorKeyLight.intensity = 1.0 - monitorIdle*0.55;
 
-  // keyboard backlight: slow, quiet breathing — fixed desaturated color, never a rainbow
-  const breathe = 0.5 + Math.sin(elapsed*0.55)*0.5;
+  // keyboard + mouse RGB: a rainbow wave travels across the keys, and the underglow /
+  // mouse spine / mouse glow stay color-synced so the whole setup reads as one system
   const kbAmt = smooth01(t,0.05,0.15);
-  rgbStrip.material.opacity = kbAmt * (0.35 + breathe*0.3);
-  mouseGlow.material.opacity = kbAmt * (0.3 + breathe*0.25);
+  const huePhase = reducedMotion ? 0 : elapsed*0.35;
+
+  for(let i=0;i<keycapBaseX.length;i++){
+    const hue = ((keycapBaseX[i]*1.6 + huePhase) % 1 + 1) % 1;
+    _kbColor.setHSL(hue, 0.75, 0.6);
+    keycaps.setColorAt(i, _kbColor);
+  }
+  keycaps.instanceColor.needsUpdate = true;
+
+  const stripHue = ((huePhase*0.6) % 1 + 1) % 1;
+  _kbColor.setHSL(stripHue, 0.7, 0.62);
+  rgbStrip.material.color.copy(_kbColor);
+  mouseGlow.material.color.copy(_kbColor);
+  mouseSpine.material.color.copy(_kbColor);
+
+  const breathe = 0.5 + Math.sin(elapsed*0.55)*0.5;
+  rgbStrip.material.opacity = kbAmt * (0.4 + breathe*0.35);
+  mouseGlow.material.opacity = kbAmt * (0.35 + breathe*0.3);
+  mouseSpine.material.opacity = kbAmt * (0.55 + breathe*0.3);
 
   // moonlight: quiet and constant, a touch brighter when the lamp is off (boot / connection)
   const lampOff = 1 - trapezoid(t,0.02,0.09,0.88,0.98);
